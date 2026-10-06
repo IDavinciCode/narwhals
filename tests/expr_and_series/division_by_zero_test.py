@@ -217,3 +217,27 @@ def test_floordiv_by_zero_keeps_dtype(
     a = nw.col("a").cast(nw.Float32)
     schema = df.select(by_zero=a // 0, by_two=a // 2).collect_schema()
     assert schema["by_zero"] == schema["by_two"]
+
+
+def test_mod_by_zero(constructor: Constructor, request: pytest.FixtureRequest) -> None:
+    if "polars" in str(constructor) and POLARS_VERSION < (0, 20, 7):
+        pytest.skip(reason="bug")
+    if any(x in str(constructor) for x in ["pandas_pyarrow", "modin_pyarrow", "cudf"]):
+        # pandas[pyarrow] does not implement mod
+        request.applymarker(pytest.mark.xfail)
+
+    data = {"i": [0, 1, 2, 3], "a": [7, 8, 7, None], "b": [0, 3, None, 0]}
+    df = nw.from_native(constructor(data))
+    result = df.select(
+        "i",
+        mod=nw.col("a") % nw.col("b"),
+        rmod=7 % nw.col("b"),
+        scalar_zero=nw.col("a") % 0,
+    ).sort("i")
+    expected = {
+        "i": [0, 1, 2, 3],
+        "mod": [None, 2, None, None],
+        "rmod": [None, 1, None, None],
+        "scalar_zero": [None, None, None, None],
+    }
+    assert_equal_data(result, expected)
